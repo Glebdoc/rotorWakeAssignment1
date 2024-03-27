@@ -48,7 +48,7 @@ def loadsPerElement(Vaxial, Vtan, chord, twist, polar_alpha, polar_cl, polar_cd)
     Vp = np.sqrt(Vaxial**2 + Vtan**2)
 
     phi = np.arctan2(Vaxial,Vtan)
-    alpha = phi*180/np.pi + twist 
+    AoA = phi*180/np.pi + twist 
 
     Cl = np.interp(alpha, polar_alpha, polar_cl)
     Cd = np.interp(alpha, polar_alpha, polar_cd)
@@ -60,7 +60,7 @@ def loadsPerElement(Vaxial, Vtan, chord, twist, polar_alpha, polar_cl, polar_cd)
     Fazim = L*np.sin(phi) - D*np.cos(phi)
     gamma = 0.5*Vp*Cl*chord
 
-    return Fnormal, Fazim, gamma
+    return Fnormal, Fazim, gamma, phi, AoA
 
 def solver(Uinf, r1_R, r2_R, Rstart, Rtip , Omega, R, Nb, chord, twist, alpha, cl, cd ):
     A = np.pi*((r2_R*R)**2 - (r1_R*R)**2) # area of the annulus
@@ -77,7 +77,7 @@ def solver(Uinf, r1_R, r2_R, Rstart, Rtip , Omega, R, Nb, chord, twist, alpha, c
         Vaxial = Uinf*(1-a)
         Vtan = (1+aprime)*Omega*r_R*R
 
-        Fnorm, Fazim, gamma = loadsPerElement(Vaxial, Vtan, chord, twist, alpha, cl, cd)
+        Fnorm, Fazim, gamma, phi, AoA = loadsPerElement(Vaxial, Vtan, chord, twist, alpha, cl, cd)
         axialLoad = Fnorm*R*(r2_R-r1_R)*Nb
         # We have just calculated the loads on the blade element
 
@@ -99,10 +99,10 @@ def solver(Uinf, r1_R, r2_R, Rstart, Rtip , Omega, R, Nb, chord, twist, alpha, c
             print('iterations: ', i)
             break
 
-    return [a, aprime, r_R, Fnorm, Fazim, gamma]
+    return [a, aprime, r_R, Fnorm, Fazim, gamma, phi, AoA]
 
 
-results =np.zeros([len(r_R)-1,6]) 
+results =np.zeros([len(r_R)-1,7]) 
 for i in range(len(r_R)-1):
     chord = np.interp((r_R[i]+r_R[i+1])/2, r_R, chord_distribution)
     twist = np.interp((r_R[i]+r_R[i+1])/2, r_R, twist_distribution)

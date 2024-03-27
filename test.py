@@ -44,7 +44,7 @@ def loadBladeElement(vnorm, vtan, r_R, chord, twist, polar_alpha, polar_cl, pola
     fnorm = lift*np.cos(inflowangle)+drag*np.sin(inflowangle)
     ftan = lift*np.sin(inflowangle)-drag*np.cos(inflowangle)
     gamma = 0.5*np.sqrt(vmag2)*cl*chord
-    return fnorm , ftan, gamma
+    return fnorm , ftan, gamma, inflowangle*180/np.pi, alpha
 
 def solveStreamtube(Uinf, r1_R, r2_R, rootradius_R, tipradius_R , Omega, Radius, NBlades, chord, twist, polar_alpha, polar_cl, polar_cd ):
 
@@ -55,7 +55,7 @@ def solveStreamtube(Uinf, r1_R, r2_R, rootradius_R, tipradius_R , Omega, Radius,
     aline = 0.0 # tangential induction factor
     
     Niterations = 100
-    Erroriterations =0.00001 # error limit for iteration rpocess, in absolute value of induction
+    Erroriterations =0.000001 # error limit for iteration rpocess, in absolute value of induction
     
     for i in range(Niterations):
         # ///////////////////////////////////////////////////////////////////////
@@ -64,7 +64,7 @@ def solveStreamtube(Uinf, r1_R, r2_R, rootradius_R, tipradius_R , Omega, Radius,
         Urotor = Uinf*(1-a) # axial velocity at rotor
         Utan = (1+aline)*Omega*r_R*Radius # tangential velocity at rotor
         # calculate loads in blade segment in 2D (N/m)
-        fnorm, ftan, gamma = loadBladeElement(Urotor, Utan, r_R,chord, twist, polar_alpha, polar_cl, polar_cd)
+        fnorm, ftan, gamma, phi, AoA = loadBladeElement(Urotor, Utan, r_R,chord, twist, polar_alpha, polar_cl, polar_cd)
         load3Daxial =fnorm*Radius*(r2_R-r1_R)*NBlades # 3D force in axial direction
         # load3Dtan =loads[1]*Radius*(r2_R-r1_R)*NBlades # 3D force in azimuthal/tangential direction (not used here)
       
@@ -83,59 +83,138 @@ def solveStreamtube(Uinf, r1_R, r2_R, rootradius_R, tipradius_R , Omega, Radius,
         
         # correct new axial induction with Prandtl's correction
         Prandtl, Prandtltip, Prandtlroot = PrandtlTipRootCorrection(r_R, rootradius_R, tipradius_R, Omega*Radius/Uinf, NBlades, anew);
-        if (Prandtl < 0.0001): 
-            Prandtl = 0.0001 # avoid divide by zero
+        if (Prandtl < 0.00001): 
+            Prandtl = 0.00001 # avoid divide by zero
         anew = anew/Prandtl # correct estimate of axial induction
         a = 0.75*a+0.25*anew # for improving convergence, weigh current and previous iteration of axial induction
+        if (a>0.95):
+            a=0.95
 
-        # calculate aximuthal induction
         aline = ftan*NBlades/(2*np.pi*Uinf*(1-a)*Omega*2*(r_R*Radius)**2)
-        aline =aline/Prandtl # correct estimate of azimuthal induction with Prandtl's correction
-        # ///////////////////////////////////////////////////////////////////////////
-        # // end of the block "Calculate new estimate of axial and azimuthal induction"
-        # ///////////////////////////////////////////////////////////////////////
+        aline =aline/Prandtl 
         
-        #// test convergence of solution, by checking convergence of axial induction
         if (np.abs(a-anew) < Erroriterations): 
             # print("iterations")
             # print(i)
             break
 
-    return [a , aline, r_R, fnorm , ftan, gamma]
+    return [a , aline, r_R, fnorm , ftan, gamma, phi, AoA]
 
 # define the blade geometry
 delta_r_R = .01
 r_R = np.arange(0.2, 1+delta_r_R/2, delta_r_R)
+print(r_R)
 
 
 # blade shape
-pitch = -2 # degrees
+pitch = 2 # degrees
 chord_distribution = 3*(1-r_R)+1 # meters
-twist_distribution = 14*(1-r_R)+pitch # degrees
-
-
-
+twist_distribution = -14*(1-r_R)+pitch # degrees
 # define flow conditions
 Uinf = 10 # unperturbed wind speed in m/s
-TSR = 6 # tip speed ratio
-Radius = 50
-Omega = Uinf*TSR/Radius
 NBlades = 3
 
 TipLocation_R =  1
 RootLocation_R =  0.2
 
+Radius = 50
+TSR = [6, 8, 10] # tip speed ratio
+final_results = np.zeros([len(r_R)-1,8,3])
+for j in range(len(TSR)):
+    Omega = Uinf*TSR[j]/Radius
 
-# solve BEM model
+    results =np.zeros([len(r_R)-1,8]) 
 
+    for i in range(len(r_R)-1):
+        chord = np.interp((r_R[i]+r_R[i+1])/2, r_R, chord_distribution)
+        twist = np.interp((r_R[i]+r_R[i+1])/2, r_R, twist_distribution)
+        
+        results[i,:] = solveStreamtube(Uinf, r_R[i], r_R[i+1], RootLocation_R, TipLocation_R , Omega, Radius, NBlades, chord, twist, polar_alpha, polar_cl, polar_cd )
+    final_results[:,:,j] = results[:,:]
 
-results =np.zeros([len(r_R)-1,6]) 
+def plot_alpha_rR(final_results, TSR, save=False):
+    for i in range(len(TSR)):
+        plt.plot(final_results[:,2,i], final_results[:,7,i], label = 'TSR = '+str(TSR[i]))
+    plt.ylabel(r'$\alpha$')
+    plt.xlabel('r/R')
+    plt.grid()
+    plt.legend()
+    if save:
+        plt.savefig('alpha_rR.png')
+        plt.cla()
+    else:
+        plt.show()
 
-for i in range(len(r_R)-1):
-    chord = np.interp((r_R[i]+r_R[i+1])/2, r_R, chord_distribution)
-    twist = np.interp((r_R[i]+r_R[i+1])/2, r_R, twist_distribution)
-    
-    results[i,:] = solveStreamtube(Uinf, r_R[i], r_R[i+1], RootLocation_R, TipLocation_R , Omega, Radius, NBlades, chord, twist, polar_alpha, polar_cl, polar_cd )
+def plot_phi_rR(final_results, TSR, save=False):
+    for i in range(len(TSR)):
+        plt.plot(final_results[:,2,i], final_results[:,6,i], label = 'TSR = '+str(TSR[i]))
+    plt.ylabel(r'$\phi$')
+    plt.xlabel('r/R')
+    plt.grid()
+    plt.legend()
+    if save:
+        plt.savefig('phi_rR.png')
+        plt.cla()
+    else:
+        plt.show()
 
+def plot_a_rR(final_results, TSR, save=False):
+    for i in range(len(TSR)):
+        plt.plot(final_results[:,2,i], final_results[:,0,i], label = 'TSR = '+str(TSR[i]))
+    plt.ylabel(r'$a$')
+    plt.xlabel('r/R')
+    plt.grid()
+    plt.legend()
+    if save:
+        plt.savefig('a_rR.png')
+        plt.cla()
+    else:
+        plt.show()
+def plot_aprime_rR(final_results, TSR, save=False):
+    for i in range(len(TSR)):
+        plt.plot(final_results[:,2,i], final_results[:,1,i], label = 'TSR = '+str(TSR[i]))
+    plt.ylabel(r'$a\prime$')
+    plt.xlabel('r/R')
+    plt.grid()
+    plt.legend()
+    if save:
+        plt.savefig('aprime_rR.png')
+        plt.cla()
+    else:
+        plt.show()
 
-print(results)
+def plot_fnorm_rR(final_results, TSR, save=False):
+    for i in range(len(TSR)):
+        plt.plot(final_results[:,2,i], final_results[:,3,i]/(0.5*Uinf**2*Radius), label = 'TSR = '+str(TSR[i]))
+    plt.ylabel(r'$F_{norm}$')
+    plt.xlabel('r/R')
+    plt.grid()
+    plt.legend()
+    if save:
+        plt.savefig('fnorm_rR.png')
+        plt.cla()
+    else:
+        plt.show()
+
+def plot_ftan_rR(final_results, TSR, save=False):
+    for i in range(len(TSR)):
+        plt.plot(final_results[:,2,i], final_results[:,4,i]/(0.5*Uinf**2*Radius), label = 'TSR = '+str(TSR[i]))
+    plt.ylabel(r'$F_{tan}$')
+    plt.xlabel('r/R')
+    plt.grid()
+    plt.legend()
+    if save:
+        plt.savefig('ftan_rR.png')
+        plt.cla()
+    else:
+        plt.show()
+
+save = True
+
+plot_alpha_rR(final_results, TSR, save)
+plot_phi_rR(final_results, TSR, save)
+plot_a_rR(final_results, TSR, save)
+plot_aprime_rR(final_results, TSR, save)
+plot_fnorm_rR(final_results, TSR, save)
+plot_ftan_rR(final_results, TSR, save)
+
