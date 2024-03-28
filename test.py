@@ -44,7 +44,7 @@ def loadBladeElement(vnorm, vtan, r_R, chord, twist, polar_alpha, polar_cl, pola
     fnorm = lift*np.cos(inflowangle)+drag*np.sin(inflowangle)
     ftan = lift*np.sin(inflowangle)-drag*np.cos(inflowangle)
     gamma = 0.5*np.sqrt(vmag2)*cl*chord
-    return fnorm , ftan, gamma, inflowangle*180/np.pi, alpha
+    return fnorm , ftan, gamma, inflowangle*180/np.pi, alpha, cl, cd, lift, drag
 
 def solveStreamtube(Uinf, r1_R, r2_R, rootradius_R, tipradius_R , Omega, Radius, NBlades, chord, twist, polar_alpha, polar_cl, polar_cd ):
 
@@ -64,7 +64,7 @@ def solveStreamtube(Uinf, r1_R, r2_R, rootradius_R, tipradius_R , Omega, Radius,
         Urotor = Uinf*(1-a) # axial velocity at rotor
         Utan = (1+aline)*Omega*r_R*Radius # tangential velocity at rotor
         # calculate loads in blade segment in 2D (N/m)
-        fnorm, ftan, gamma, phi, AoA = loadBladeElement(Urotor, Utan, r_R,chord, twist, polar_alpha, polar_cl, polar_cd)
+        fnorm, ftan, gamma, phi, AoA, cl_chord, cd_chord, L_chord, D_chord = loadBladeElement(Urotor, Utan, r_R,chord, twist, polar_alpha, polar_cl, polar_cd)
         load3Daxial =fnorm*Radius*(r2_R-r1_R)*NBlades # 3D force in axial direction
         # load3Dtan =loads[1]*Radius*(r2_R-r1_R)*NBlades # 3D force in azimuthal/tangential direction (not used here)
       
@@ -98,7 +98,7 @@ def solveStreamtube(Uinf, r1_R, r2_R, rootradius_R, tipradius_R , Omega, Radius,
             # print(i)
             break
 
-    return [a , aline, r_R, fnorm , ftan, gamma, phi, AoA, Prandtl, Prandtltip, Prandtlroot]
+    return [a , aline, r_R, fnorm , ftan, gamma, phi, AoA, Prandtl, Prandtltip, Prandtlroot, cl_chord, cd_chord, L_chord, D_chord]
 
 # define the blade geometry
 delta_r_R = .01
@@ -117,19 +117,17 @@ TipLocation_R =  1
 RootLocation_R =  0.2
 Radius = 50
 TSR = [6, 8, 10] # tip speed ratio
-final_results = np.zeros([len(r_R)-1,11,3])
+final_results = np.zeros([len(r_R)-1,15,3])
 for j in range(len(TSR)):
     Omega = Uinf*TSR[j]/Radius
 
-    results =np.zeros([len(r_R)-1,11])
+    results =np.zeros([len(r_R)-1,15])
 
     for i in range(len(r_R)-1):
         chord = np.interp((r_R[i]+r_R[i+1])/2, r_R, chord_distribution)
         twist = np.interp((r_R[i]+r_R[i+1])/2, r_R, twist_distribution)
-        
-        results[i,:] = solveStreamtube(Uinf, r_R[i], r_R[i+1], RootLocation_R, TipLocation_R , Omega, Radius, NBlades, chord, twist, polar_alpha, polar_cl, polar_cd )
+        results[i,:] = solveStreamtube(Uinf, r_R[i], r_R[i+1], RootLocation_R, TipLocation_R , Omega, Radius, NBlades, chord, twist, polar_alpha, polar_cl, polar_cd)
     final_results[:,:,j] = results[:,:]
-
 def plot_alpha_rR(final_results, TSR, save=False):
     for i in range(len(TSR)):
         plt.plot(final_results[:,2,i], final_results[:,7,i], label = 'TSR = '+str(TSR[i]))
@@ -211,7 +209,7 @@ def plot_tiprootloss(final_results, TSR, save:False):
     for j in range(3):
         for i in range(len(TSR)):
             plt.plot(final_results[:,2,i], final_results[:,8+j,i], label='TSR = '+str(TSR[i]))
-        plt.ylabel(r'$F_{tan}$')
+        plt.ylabel(r'Correction Factor')
         plt.xlabel('r/R')
         plt.grid()
         plt.legend()
@@ -234,6 +232,58 @@ def plot_tiprootloss(final_results, TSR, save:False):
             else:
                plt.show()
 
+def plot_cl_chord(final_results, TSR, save=False):
+    for i in range(len(TSR)):
+        plt.plot(final_results[:,2,i], final_results[:,11,i], label = 'TSR = '+str(TSR[i]))
+    plt.ylabel(r'$Cl$')
+    plt.xlabel('r/R')
+    plt.grid()
+    plt.legend()
+    if save:
+        plt.savefig('Cl_chord.png')
+        plt.cla()
+    else:
+        plt.show()
+
+def plot_cd_chord(final_results, TSR, save=False):
+    for i in range(len(TSR)):
+        plt.plot(final_results[:,2,i], final_results[:,12,i], label = 'TSR = '+str(TSR[i]))
+    plt.ylabel(r'$Cd$')
+    plt.xlabel('r/R')
+    plt.grid()
+    plt.legend()
+    if save:
+        plt.savefig('Cd_chord.png')
+        plt.cla()
+    else:
+        plt.show()
+
+def plot_L_chord(final_results, TSR, save=False):
+    for i in range(len(TSR)):
+        plt.plot(final_results[:,2,i], final_results[:,13,i], label = 'TSR = '+str(TSR[i]))
+    plt.ylabel(r'$L$')
+    plt.xlabel('r/R')
+    plt.grid()
+    plt.legend()
+    if save:
+        plt.savefig('L_chord.png')
+        plt.cla()
+    else:
+        plt.show()
+
+def plot_D_chord(final_results, TSR, save=False):
+    for i in range(len(TSR)):
+        plt.plot(final_results[:,2,i], final_results[:,14,i], label = 'TSR = '+str(TSR[i]))
+    plt.ylabel(r'$D$')
+    plt.xlabel('r/R')
+    plt.grid()
+    plt.legend()
+    if save:
+        plt.savefig('D_chord.png')
+        plt.cla()
+    else:
+        plt.show()
+
 save = True
 
 plot_alpha_rR(final_results, TSR, save)
@@ -243,4 +293,7 @@ plot_aprime_rR(final_results, TSR, save)
 plot_fnorm_rR(final_results, TSR, save)
 plot_ftan_rR(final_results, TSR, save)
 plot_tiprootloss(final_results, TSR, save)
-
+plot_cl_chord(final_results, TSR, save)
+plot_cd_chord(final_results, TSR, save)
+plot_L_chord(final_results, TSR, save)
+plot_D_chord(final_results, TSR, save)
