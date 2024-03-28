@@ -98,7 +98,7 @@ def solveStreamtube(Uinf, r1_R, r2_R, rootradius_R, tipradius_R , Omega, Radius,
             # print(i)
             break
 
-    return [a , aline, r_R, fnorm , ftan, gamma, phi, AoA]
+    return [a , aline, r_R, fnorm , ftan, gamma, phi, AoA, Prandtl, Prandtltip, Prandtlroot]
 
 # define the blade geometry
 delta_r_R = .01
@@ -113,17 +113,15 @@ twist_distribution = -14*(1-r_R)+pitch # degrees
 # define flow conditions
 Uinf = 10 # unperturbed wind speed in m/s
 NBlades = 3
-
 TipLocation_R =  1
 RootLocation_R =  0.2
-
 Radius = 50
 TSR = [6, 8, 10] # tip speed ratio
-final_results = np.zeros([len(r_R)-1,8,3])
+final_results = np.zeros([len(r_R)-1,11,3])
 for j in range(len(TSR)):
     Omega = Uinf*TSR[j]/Radius
 
-    results =np.zeros([len(r_R)-1,8]) 
+    results =np.zeros([len(r_R)-1,11])
 
     for i in range(len(r_R)-1):
         chord = np.interp((r_R[i]+r_R[i+1])/2, r_R, chord_distribution)
@@ -209,6 +207,33 @@ def plot_ftan_rR(final_results, TSR, save=False):
     else:
         plt.show()
 
+def plot_tiprootloss(final_results, TSR, save:False):
+    for j in range(3):
+        for i in range(len(TSR)):
+            plt.plot(final_results[:,2,i], final_results[:,8+j,i], label='TSR = '+str(TSR[i]))
+        plt.ylabel(r'$F_{tan}$')
+        plt.xlabel('r/R')
+        plt.grid()
+        plt.legend()
+        if j == 0:
+            if save:
+                plt.savefig('Prandtl.png')
+                plt.cla()
+            else:
+               plt.show()
+        if j == 1:
+            if save:
+                plt.savefig('Prandtl_tip.png')
+                plt.cla()
+            else:
+               plt.show()
+        if j == 2:
+            if save:
+                plt.savefig('Prandtl_root.png')
+                plt.cla()
+            else:
+               plt.show()
+
 save = True
 
 plot_alpha_rR(final_results, TSR, save)
@@ -217,4 +242,5 @@ plot_a_rR(final_results, TSR, save)
 plot_aprime_rR(final_results, TSR, save)
 plot_fnorm_rR(final_results, TSR, save)
 plot_ftan_rR(final_results, TSR, save)
+plot_tiprootloss(final_results, TSR, save)
 
