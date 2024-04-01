@@ -53,6 +53,7 @@ def solveStreamtube(Uinf, r1_R, r2_R, rootradius_R, tipradius_R , Omega, Radius,
 
     a = 0.0 # axial induction
     aline = 0.0 # tangential induction factor
+    sigma = NBlades / (2 * np.pi * r_R)
     
     Niterations = 200
     Erroriterations =0.00001 # error limit for iteration rpocess, in absolute value of induction
@@ -70,7 +71,7 @@ def solveStreamtube(Uinf, r1_R, r2_R, rootradius_R, tipradius_R , Omega, Radius,
         
         # correct new axial induction with Prandtl's correction
         Prandtl, Prandtltip, Prandtlroot = PrandtlTipRootCorrection(r_R, rootradius_R, tipradius_R, Omega*Radius/Uinf, NBlades, anew);
-        if (Prandtl < 0.00001): 
+        if (Prandtl < 0.00001):
             Prandtl = 0.00001 # avoid divide by zero
         anew = anew/Prandtl # correct estimate of axial induction
         a = 0.75*a+0.25*anew # for improving convergence, weigh current and previous iteration of axial induction
@@ -78,14 +79,61 @@ def solveStreamtube(Uinf, r1_R, r2_R, rootradius_R, tipradius_R , Omega, Radius,
             a=0.95
 
         aline = ftan*NBlades/(2*np.pi*Uinf*(1-a)*Omega*2*(r_R*Radius)**2)
-        aline =aline/Prandtl 
+        aline = aline/Prandtl
         
         if (np.abs(a-anew) < Erroriterations): 
             # print("iterations")
             # print(i)
             break
 
-    return [a , aline, r_R, fnorm , ftan, gamma, phi, AoA, Prandtl, Prandtltip, Prandtlroot, cl_chord, cd_chord, L_chord, D_chord]
+    return [a , aline, r_R, fnorm , ftan, gamma, phi, AoA, Prandtl, Prandtltip, Prandtlroot, cl_chord, cd_chord, L_chord, D_chord, sigma]
+
+
+def solveStreamtube_wP(Uinf, r1_R, r2_R, rootradius_R, tipradius_R, Omega, Radius, NBlades, chord, twist, polar_alpha,
+                    polar_cl, polar_cd):
+    Area = np.pi * ((r2_R * Radius) ** 2 - (r1_R * Radius) ** 2)  # area streamtube
+    r_R = (r1_R + r2_R) / 2  # centroide
+
+    a = 0.0  # axial induction
+    aline = 0.0  # tangential induction factor
+    sigma = NBlades / (2 * np.pi * r_R)
+
+    Niterations = 200
+    Erroriterations = 0.00001  # error limit for iteration rpocess, in absolute value of induction
+
+    for i in range(Niterations):
+        Urotor = Uinf * (1 - a)  # axial velocity at rotor
+        Utan = (1 + aline) * Omega * r_R * Radius  # tangential velocity at rotor
+        # calculate loads in blade segment in 2D (N/m)
+        fnorm, ftan, gamma, phi, AoA, cl_chord, cd_chord, L_chord, D_chord = loadBladeElement(Urotor, Utan, r_R, chord,
+                                                                                              twist, polar_alpha,
+                                                                                              polar_cl, polar_cd)
+        load3Daxial = fnorm * Radius * (r2_R - r1_R) * NBlades  # 3D force in axial direction
+
+        CT = load3Daxial / (0.5 * Area * Uinf ** 2)
+
+        anew = ainduction(CT)
+
+        # correct new axial induction with Prandtl's correction
+        Prandtl, Prandtltip, Prandtlroot = PrandtlTipRootCorrection(r_R, rootradius_R, tipradius_R,
+                                                                    Omega * Radius / Uinf, NBlades, anew);
+        # if (Prandtl < 0.00001):
+        #    Prandtl = 0.00001 # avoid divide by zero
+        # anew = anew/Prandtl # correct estimate of axial induction
+        a = 0.75*a+0.25*anew # for improving convergence, weigh current and previous iteration of axial induction
+        if (a > 0.95):
+            a = 0.95
+
+        aline = ftan * NBlades / (2 * np.pi * Uinf * (1 - a) * Omega * 2 * (r_R * Radius) ** 2)
+        # aline = aline/Prandtl
+
+        if (np.abs(a - anew) < Erroriterations):
+            # print("iterations")
+            # print(i)
+            break
+
+    return [a, aline, r_R, fnorm, ftan, gamma, phi, AoA, Prandtl, Prandtltip, Prandtlroot, cl_chord, cd_chord, L_chord,
+            D_chord, sigma]
 
 # print the cosine and sine spacing arrays
 # def plot_spacing(r_R):
@@ -97,7 +145,7 @@ def BEM():
     for j in range(len(TSR)):
         Omega = Uinf*TSR[j]/Radius
 
-        results =np.zeros([len(r_R)-1,15])
+        results =np.zeros([len(r_R)-1,16])
 
         for i in range(len(r_R)-1):
             chord = np.interp((r_R[i]+r_R[i+1])/2, r_R, chord_distribution)
@@ -119,6 +167,17 @@ def BEM():
         # else:
         #     CT_convergence_cos.append(np.sum(dr*results[:,3]*NBlades/(0.5*Uinf**2*np.pi*Radius**2)))
 
+def BEM_wP():
+    for j in range(len(TSR)):
+        Omega = Uinf*TSR[j]/Radius
+
+        results_wP =np.zeros([len(r_R)-1,16])
+
+        for i in range(len(r_R)-1):
+            chord = np.interp((r_R[i]+r_R[i+1])/2, r_R, chord_distribution)
+            twist = np.interp((r_R[i]+r_R[i+1])/2, r_R, twist_distribution)
+            results_wP[i,:] = solveStreamtube_wP(Uinf, r_R[i], r_R[i+1], RootLocation_R, TipLocation_R , Omega, Radius, NBlades, chord, twist, polar_alpha, polar_cl, polar_cd)
+        final_results_wP[:,:,j] = results_wP[:,:]
    
 
 Uinf = 10 # unperturbed wind speed in m/s
@@ -138,12 +197,15 @@ twist_distribution = -14*(1-r_R)+pitch # degrees
 TSR = np.array([6,8,10])
 #TSR = np.array([8])
 #TSR = np.arange(2, 13, 0.5)
-CP = [] 
+CP = []
+CP_rR = []
 CT = []
 T = []
 Q = []
-final_results = np.zeros([len(r_R)-1,15,len(TSR)])
+final_results = np.zeros([len(r_R)-1,16,len(TSR)])
 BEM()
+final_results_wP = np.zeros([len(r_R)-1,16,len(TSR)])
+BEM_wP()
 # CT_convergence = []
 # CT_convergence_cos = []
 # NumberOfPoints = []
@@ -242,6 +304,18 @@ def plot_alpha_rR(final_results, TSR, save=False):
         plt.cla()
     else:
         plt.show()
+def plot_alpha_rR_Prandtl(final_results, final_results_wP, save=False):
+    plt.plot(final_results[:,2,1], final_results[:,7,1], label = 'With tip and loss correction')
+    plt.plot(final_results_wP[:, 2, 1], final_results_wP[:, 7, 1], label='Without tip and loss correction')
+    plt.ylabel(r'$\alpha$ [deg]')
+    plt.xlabel('r/R')
+    plt.grid()
+    plt.legend()
+    if save:
+        plt.savefig('alpha_rR_Prandtl.png')
+        plt.cla()
+    else:
+        plt.show()
 def plot_phi_rR(final_results, TSR, save=False):
     for i in range(len(TSR)):
         plt.plot(final_results[:,2,i], final_results[:,6,i], label = 'TSR = '+str(TSR[i]))
@@ -254,6 +328,18 @@ def plot_phi_rR(final_results, TSR, save=False):
         plt.cla()
     else:
         plt.show()
+def plot_phi_rR_Prandtl(final_results, final_results_wP, save=False):
+    plt.plot(final_results[:,2,1], final_results[:,6,1], label = 'With tip and loss correction')
+    plt.plot(final_results_wP[:, 2, 1], final_results_wP[:, 6, 1], label='Without tip and loss correction')
+    plt.ylabel(r'$\phi$ [deg]')
+    plt.xlabel('r/R')
+    plt.grid()
+    plt.legend()
+    if save:
+        plt.savefig('phi_rR_Prandtl.png')
+        plt.cla()
+    else:
+        plt.show()
 def plot_a_rR(final_results, TSR, save=False):
     for i in range(len(TSR)):
         plt.plot(final_results[:,2,i], final_results[:,0,i], label = 'TSR = '+str(TSR[i]))
@@ -263,6 +349,18 @@ def plot_a_rR(final_results, TSR, save=False):
     plt.legend()
     if save:
         plt.savefig('a_rR.png')
+        plt.cla()
+    else:
+        plt.show()
+def plot_a_rR_Prandtl(final_results, final_results_wP, save=False):
+    plt.plot(final_results[:,2,1], final_results[:,0,1], label = 'With tip and loss correction')
+    plt.plot(final_results_wP[:, 2, 1], final_results_wP[:, 0, 1], label='Without tip and loss correction')
+    plt.ylabel(r'$a$')
+    plt.xlabel('r/R')
+    plt.grid()
+    plt.legend()
+    if save:
+        plt.savefig('a_rR_Prandtl.png')
         plt.cla()
     else:
         plt.show()
@@ -304,28 +402,41 @@ def plot_ftan_rR(final_results, TSR, save=False):
         plt.cla()
     else:
         plt.show()
-
+def plot_ftan_rR_Prandtl(final_results, final_results_wP, save=False):
+    plt.plot(final_results[:,2,1], final_results[:,4,1]/(0.5*Uinf**2*Radius), label = 'With tip and loss correction')
+    plt.plot(final_results_wP[:, 2, 1], final_results_wP[:, 4, 1] / (0.5 * Uinf ** 2 * Radius), label='With tip and loss correction')
+    plt.ylabel(r'$C_{tan}$')
+    plt.xlabel('r/R')
+    plt.grid()
+    plt.legend()
+    if save:
+        plt.savefig('ftan_rR_Prandtl.png')
+        plt.cla()
+    else:
+        plt.show()
 def plot_tiprootloss(final_results, TSR, save:False):
     for j in range(3):
         for i in range(len(TSR)):
             plt.plot(final_results[:,2,i], final_results[:,8+j,i], label='TSR = '+str(TSR[i]))
-        plt.ylabel(r'Correction Factor')
         plt.xlabel('r/R')
         plt.grid()
         plt.legend()
         if j == 0:
+            plt.ylabel(r'$f(\mu)$ [-]')
             if save:
                 plt.savefig('Prandtl.png')
                 plt.cla()
             else:
                plt.show()
         if j == 1:
+            plt.ylabel(r'$f(\mu)_{tip}$ [-]')
             if save:
                 plt.savefig('Prandtl_tip.png')
                 plt.cla()
             else:
                plt.show()
         if j == 2:
+            plt.ylabel(r'$f(\mu)_{root}$ [-]')
             if save:
                 plt.savefig('Prandtl_root.png')
                 plt.cla()
@@ -418,8 +529,74 @@ def plt_CP(CT, CP, save=False):
     else:
         plt.show()
 
+def plot_Cl_vs_alpha(polar_cl, polar_alpha, polar_cd, save=False):
+    plt.plot(polar_alpha, polar_cl)
+    plt.ylabel(r'$Cl$ [-]')
+    plt.xlabel(r'$\alpha$ [deg]')
+    plt.grid()
+    max_cl_index = np.argmax(polar_cl)
+    max_cl_alpha = polar_alpha[max_cl_index]
+    max_cl_value = polar_cl[max_cl_index]
+    plt.plot(max_cl_alpha, max_cl_value, 'rx', markersize=10, markeredgewidth=1)
+    cl_cd_ratio = polar_cl / polar_cd
+    max_ratio_index = np.argmax(cl_cd_ratio)
+    max_ratio_alpha = polar_alpha[max_ratio_index]
+    max_ratio_cl = polar_cl[max_ratio_index]
+    plt.plot(max_ratio_alpha, max_ratio_cl, 'kx', markersize=10, markeredgewidth=1)
+    if save:
+        plt.savefig('Cl_vs_alpha.png')
+        plt.cla()
+    else:
+        plt.show()
+
+def plot_Cl_vs_Cd(polar_cl, polar_cd, save=False):
+    plt.plot(polar_cd, polar_cl)
+    plt.ylabel(r'$Cl$ [-]')
+    plt.xlabel('Cd [-]')
+    plt.grid()
+    plt.xlim([0,0.1])
+    max_cl_index = np.argmax(polar_cl)
+    max_cl_cd = polar_cd[max_cl_index]
+    max_cl_value = polar_cl[max_cl_index]
+    plt.plot(max_cl_cd, max_cl_value, 'rx', markersize=10, markeredgewidth=1)
+    cl_cd_ratio = polar_cl / polar_cd
+    max_ratio_index = np.argmax(cl_cd_ratio)
+    max_ratio_cd = polar_cd[max_ratio_index]
+    max_ratio_cl = polar_cl[max_ratio_index]
+    plt.plot(max_ratio_cd, max_ratio_cl, 'kx', markersize=10, markeredgewidth=1)
+    if save:
+        plt.savefig('Cl_vs_Cd.png')
+        plt.cla()
+    else:
+        plt.show()
+
+def plot_Ct_rR(final_results, TSR, save=False):
+    for i in range(len(TSR)):
+        plt.plot(final_results[:,2,i], final_results[:,3,i]*final_results[:,15,i]/(0.5 * Uinf**2 * Radius), label = 'TSR = '+str(TSR[i]))
+    plt.ylabel(r'$C_{T}$')
+    plt.xlabel('r/R')
+    plt.grid()
+    plt.legend()
+    if save:
+        plt.savefig('Ct_rR.png')
+        plt.cla()
+    else:
+        plt.show()
+def plot_Ct_rR_Prandtl(final_results, final_results_wP, save=False):
+    plt.plot(final_results[:,2,1], final_results[:,3,1]*final_results[:,15,1]/(0.5 * Uinf**2 * Radius), label = 'With tip and loss correction')
+    plt.plot(final_results_wP[:, 2, 1], final_results_wP[:, 3, 1] * final_results_wP[:, 15, 1] / (0.5 * Uinf ** 2 * Radius), label='Without tip and loss correction')
+    plt.ylabel(r'$C_{T}$')
+    plt.xlabel('r/R')
+    plt.grid()
+    plt.legend()
+    if save:
+        plt.savefig('Ct_rR_Prandtl.png')
+        plt.cla()
+    else:
+        plt.show()
+
 save = True
-pressure(final_results, TSR)
+#pressure(final_results, TSR)
 # plt_TQ(T,Q,save)
 # plt_CP(CT, CP, save=False)
 
@@ -433,14 +610,22 @@ pressure(final_results, TSR)
 # CP = np.sum(dr*results[:,4]*results[:,2]*NBlades*Radius*Omega/(0.5*Uinf**3*np.pi*Radius**2))
 
 
-# plot_alpha_rR(final_results, TSR, save)
-# plot_phi_rR(final_results, TSR, save)
+#plot_alpha_rR(final_results, TSR, save)
+plot_alpha_rR_Prandtl(final_results, final_results_wP, save)
+#plot_phi_rR(final_results, TSR, save)
+plot_phi_rR_Prandtl(final_results, final_results_wP, save)
 # plot_a_rR(final_results, TSR, save)
+plot_a_rR_Prandtl(final_results, final_results_wP, save)
 # plot_aprime_rR(final_results, TSR, save)
 # plot_fnorm_rR(final_results, TSR, save)
-# plot_ftan_rR(final_results, TSR, save)
-# plot_tiprootloss(final_results, TSR, save)
+plot_ftan_rR(final_results, TSR, save)
+plot_ftan_rR_Prandtl(final_results, final_results_wP, save)
+plot_tiprootloss(final_results, TSR, save)
 # plot_cl_chord(final_results, TSR, save)
 # plot_cd_chord(final_results, TSR, save)
 # plot_L_chord(final_results, TSR, save)
 # plot_D_chord(final_results, TSR, save)
+plot_Cl_vs_alpha(polar_cl, polar_alpha, polar_cd, save)
+plot_Cl_vs_Cd(polar_cl, polar_cd, save)
+plot_Ct_rR(final_results, TSR, save)
+plot_Ct_rR_Prandtl(final_results, final_results_wP, save)
