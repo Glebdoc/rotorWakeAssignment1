@@ -109,6 +109,7 @@ print(r_R)
 # blade shape
 pitch = 2 # degrees
 chord_distribution = 3*(1-r_R)+1 # meters
+chords = np.delete(chord_distribution, -1)
 twist_distribution = -14*(1-r_R)+pitch # degrees
 # define flow conditions
 Uinf = 10 # unperturbed wind speed in m/s
@@ -116,7 +117,11 @@ NBlades = 3
 TipLocation_R =  1
 RootLocation_R =  0.2
 Radius = 50
-TSR = [6, 8, 10] # tip speed ratio
+TSR = np.array([6,8,10])
+CP = [] 
+CT = []
+T = []
+Q = []
 final_results = np.zeros([len(r_R)-1,15,3])
 for j in range(len(TSR)):
     Omega = Uinf*TSR[j]/Radius
@@ -128,6 +133,83 @@ for j in range(len(TSR)):
         twist = np.interp((r_R[i]+r_R[i+1])/2, r_R, twist_distribution)
         results[i,:] = solveStreamtube(Uinf, r_R[i], r_R[i+1], RootLocation_R, TipLocation_R , Omega, Radius, NBlades, chord, twist, polar_alpha, polar_cl, polar_cd)
     final_results[:,:,j] = results[:,:]
+    dr = (r_R[1:]-r_R[:-1])*Radius
+    Fnorm = final_results[:,3,j]
+    Ftan = final_results[:,4,j]
+    T_total = np.sum(0.5*1.225*Uinf*Uinf*NBlades*chords*dr*Fnorm)
+    Q_total = np.sum(0.5*1.225*Uinf*Uinf*NBlades*chords*final_results[:,2,j]*Radius*Ftan*dr)
+    Q.append(Q_total)
+    T.append(T_total)
+    CP.append(np.sum(dr*final_results[:,4, j]*final_results[:,2, j]*NBlades*Radius*Omega/(0.5*Uinf**3*np.pi*Radius**2)))
+    CT.append(np.sum(dr*results[:,3]*NBlades/(0.5*Uinf**2*np.pi*Radius**2)))
+
+
+def pressure(final_results, TSR):
+    p_static = 101325
+    # Creating subplots
+    fig, axs = plt.subplots(2, 2, figsize=(10, 8))
+    for i in range(len(TSR)):
+        Omega = Uinf*TSR[i]/Radius
+        rR = final_results[:,2,i]
+        CT_perAnulli = final_results[:,3,i]*NBlades/(0.5*1.225*(Uinf**2)*2*np.pi*rR*Radius)
+
+        a = 0.5*(1-np.sqrt(1-CT_perAnulli))
+        # aline = final_results[:,1,i]
+        
+        Urotor = Uinf*(1-a) # axial velocity at rotor
+
+        VR = np.sqrt(Urotor**2)
+
+        
+        U4rotor = Uinf*(1-2*a)
+        V4 = np.sqrt(U4rotor**2)
+
+
+        x = rR
+        y1 = (p_static + 0.5*1.225*Uinf**2)*1e-5
+        y2 = (p_static + 0.5*1.225*Uinf**2)*1e-5
+        y4 = (p_static + 0.5*1.225*(V4**2))*1e-5
+        y3 = y4
+                # Plotting data on subplots
+        axs[0, 0].plot([0,1], [y1,y1])
+        axs[0, 0].set_title('Point 1')
+        axs[0, 0].grid(True)  # Add grid
+        axs[0, 0].set_ylim(0.98, 1.2)  # Set y-axis limits
+        axs[0, 0].set_xlabel(r'$r/R$', fontsize=12)
+        axs[0, 0].set_ylabel(r'$P_{stag}$ [bar]', fontsize=12)
+
+        axs[0, 1].plot([0,1], [y2,y2])
+        axs[0, 1].set_title('Point 2')
+        axs[0, 1].grid(True)  # Add grid
+        axs[0, 1].set_ylim(0.98, 1.2)  # Set y-axis limits
+        axs[0, 1].set_xlabel(r'$r/R$', fontsize=12)
+        axs[0, 1].set_ylabel(r'$P_{stag}$ [bar]', fontsize=12)
+
+        axs[1, 0].plot(x, y3)
+        axs[1, 0].set_title('Point 3')
+        axs[1, 0].grid(True)  # Add grid
+        axs[1, 0].set_ylim(1.0132, 1.014)  # Set y-axis limits
+        axs[1, 0].set_xlabel(r'$r/R$', fontsize=12)
+        axs[1, 0].set_ylabel(r'$P_{stag}$ [bar]', fontsize=12)
+
+        axs[1, 1].plot(x, y4)
+        axs[1, 1].set_title('Point 4')
+        axs[1, 1].grid(True)  # Add grid
+        axs[1, 1].set_ylim(1.0132, 1.014)  # Set y-axis limits
+        axs[1, 1].set_xlabel(r'$r/R$', fontsize=12)
+        axs[1, 1].set_ylabel(r'$P_{stag}$ [bar]', fontsize=12)
+
+
+        # Adding spacing between subplots
+        plt.tight_layout()
+
+        # Displaying the plot
+    plt.show()
+    #     plt.plot(rR, p_stag)
+    # # plt.show()
+    # # plt.cla()
+      
+
 def plot_alpha_rR(final_results, TSR, save=False):
     for i in range(len(TSR)):
         plt.plot(final_results[:,2,i], final_results[:,7,i], label = 'TSR = '+str(TSR[i]))
@@ -182,7 +264,7 @@ def plot_aprime_rR(final_results, TSR, save=False):
 def plot_fnorm_rR(final_results, TSR, save=False):
     for i in range(len(TSR)):
         plt.plot(final_results[:,2,i], final_results[:,3,i]/(0.5*Uinf**2*Radius), label = 'TSR = '+str(TSR[i]))
-    plt.ylabel(r'$F_{norm}$')
+    plt.ylabel(r'$C_{norm}$')
     plt.xlabel('r/R')
     plt.grid()
     plt.legend()
@@ -195,7 +277,7 @@ def plot_fnorm_rR(final_results, TSR, save=False):
 def plot_ftan_rR(final_results, TSR, save=False):
     for i in range(len(TSR)):
         plt.plot(final_results[:,2,i], final_results[:,4,i]/(0.5*Uinf**2*Radius), label = 'TSR = '+str(TSR[i]))
-    plt.ylabel(r'$F_{tan}$')
+    plt.ylabel(r'$C_{tan}$')
     plt.xlabel('r/R')
     plt.grid()
     plt.legend()
