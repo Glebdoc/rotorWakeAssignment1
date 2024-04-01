@@ -50,35 +50,22 @@ def solveStreamtube(Uinf, r1_R, r2_R, rootradius_R, tipradius_R , Omega, Radius,
 
     Area = np.pi*((r2_R*Radius)**2-(r1_R*Radius)**2) #  area streamtube
     r_R = (r1_R+r2_R)/2 # centroide
-    # initiatlize variables
+
     a = 0.0 # axial induction
     aline = 0.0 # tangential induction factor
     
-    Niterations = 100
-    Erroriterations =0.000001 # error limit for iteration rpocess, in absolute value of induction
+    Niterations = 200
+    Erroriterations =0.00001 # error limit for iteration rpocess, in absolute value of induction
     
     for i in range(Niterations):
-        # ///////////////////////////////////////////////////////////////////////
-        # // this is the block "Calculate velocity and loads at blade element"
-        # ///////////////////////////////////////////////////////////////////////
         Urotor = Uinf*(1-a) # axial velocity at rotor
         Utan = (1+aline)*Omega*r_R*Radius # tangential velocity at rotor
         # calculate loads in blade segment in 2D (N/m)
         fnorm, ftan, gamma, phi, AoA, cl_chord, cd_chord, L_chord, D_chord = loadBladeElement(Urotor, Utan, r_R,chord, twist, polar_alpha, polar_cl, polar_cd)
         load3Daxial =fnorm*Radius*(r2_R-r1_R)*NBlades # 3D force in axial direction
-        # load3Dtan =loads[1]*Radius*(r2_R-r1_R)*NBlades # 3D force in azimuthal/tangential direction (not used here)
-      
-        # ///////////////////////////////////////////////////////////////////////
-        # //the block "Calculate velocity and loads at blade element" is done
-        # ///////////////////////////////////////////////////////////////////////
 
-        # ///////////////////////////////////////////////////////////////////////
-        # // this is the block "Calculate new estimate of axial and azimuthal induction"
-        # ///////////////////////////////////////////////////////////////////////
-        # // calculate thrust coefficient at the streamtube 
         CT = load3Daxial/(0.5*Area*Uinf**2)
-        
-        # calculate new axial induction, accounting for Glauert's correction
+
         anew =  ainduction(CT)
         
         # correct new axial induction with Prandtl's correction
@@ -100,48 +87,94 @@ def solveStreamtube(Uinf, r1_R, r2_R, rootradius_R, tipradius_R , Omega, Radius,
 
     return [a , aline, r_R, fnorm , ftan, gamma, phi, AoA, Prandtl, Prandtltip, Prandtlroot, cl_chord, cd_chord, L_chord, D_chord]
 
+# print the cosine and sine spacing arrays
+# def plot_spacing(r_R):
+#     plt.plot(r_R, np.zeros(len(r_R)), 'o')
+#     plt.show()
 # define the blade geometry
-delta_r_R = .01
-r_R = np.arange(0.2, 1+delta_r_R/2, delta_r_R)
-print(r_R)
+#def BEM(r_R, mycos):
+def BEM():
+    for j in range(len(TSR)):
+        Omega = Uinf*TSR[j]/Radius
 
+        results =np.zeros([len(r_R)-1,15])
 
-# blade shape
-pitch = 2 # degrees
-chord_distribution = 3*(1-r_R)+1 # meters
-chords = np.delete(chord_distribution, -1)
-twist_distribution = -14*(1-r_R)+pitch # degrees
-# define flow conditions
+        for i in range(len(r_R)-1):
+            chord = np.interp((r_R[i]+r_R[i+1])/2, r_R, chord_distribution)
+            twist = np.interp((r_R[i]+r_R[i+1])/2, r_R, twist_distribution)
+            results[i,:] = solveStreamtube(Uinf, r_R[i], r_R[i+1], RootLocation_R, TipLocation_R , Omega, Radius, NBlades, chord, twist, polar_alpha, polar_cl, polar_cd)
+        final_results[:,:,j] = results[:,:]
+        dr = (r_R[1:]-r_R[:-1])*Radius
+        Fnorm = final_results[:,3,j]
+        Ftan = final_results[:,4,j]
+        T_total = np.sum(0.5*1.225*Uinf*Uinf*NBlades*chords*dr*Fnorm)
+        Q_total = np.sum(0.5*1.225*Uinf*Uinf*NBlades*chords*final_results[:,2,j]*Radius*Ftan*dr)
+        Q.append(Q_total)
+        T.append(T_total)
+        CP.append(np.sum(dr*final_results[:,4, j]*final_results[:,2, j]*NBlades*Radius*Omega/(0.5*Uinf**3*np.pi*Radius**2)))
+        CT.append(np.sum(dr*results[:,3]*NBlades/(0.5*Uinf**2*np.pi*Radius**2)))
+        # if mycos == False:
+        #     CT_convergence.append(np.sum(dr*results[:,3]*NBlades/(0.5*Uinf**2*np.pi*Radius**2)))
+        #     NumberOfPoints.append(len(r_R))
+        # else:
+        #     CT_convergence_cos.append(np.sum(dr*results[:,3]*NBlades/(0.5*Uinf**2*np.pi*Radius**2)))
+
+   
+
 Uinf = 10 # unperturbed wind speed in m/s
 NBlades = 3
 TipLocation_R =  1
 RootLocation_R =  0.2
 Radius = 50
+pitch = 2 # degrees
+
+delta_r_R = 0.01
+r_R = np.arange(0.2, 1+delta_r_R/2, delta_r_R)
+cosine_spacing = np.cos(np.linspace(np.arccos(RootLocation_R), 0, len(r_R)))
+chord_distribution = 3*(1-r_R)+1 # meters
+chords = np.delete(chord_distribution, -1)
+twist_distribution = -14*(1-r_R)+pitch # degrees
+
 TSR = np.array([6,8,10])
+#TSR = np.array([8])
+#TSR = np.arange(2, 13, 0.5)
 CP = [] 
 CT = []
 T = []
 Q = []
-final_results = np.zeros([len(r_R)-1,15,3])
-for j in range(len(TSR)):
-    Omega = Uinf*TSR[j]/Radius
+final_results = np.zeros([len(r_R)-1,15,len(TSR)])
+BEM()
+# CT_convergence = []
+# CT_convergence_cos = []
+# NumberOfPoints = []
 
-    results =np.zeros([len(r_R)-1,15])
+# plot_spacing(r_R, cosine_spacing)
 
-    for i in range(len(r_R)-1):
-        chord = np.interp((r_R[i]+r_R[i+1])/2, r_R, chord_distribution)
-        twist = np.interp((r_R[i]+r_R[i+1])/2, r_R, twist_distribution)
-        results[i,:] = solveStreamtube(Uinf, r_R[i], r_R[i+1], RootLocation_R, TipLocation_R , Omega, Radius, NBlades, chord, twist, polar_alpha, polar_cl, polar_cd)
-    final_results[:,:,j] = results[:,:]
-    dr = (r_R[1:]-r_R[:-1])*Radius
-    Fnorm = final_results[:,3,j]
-    Ftan = final_results[:,4,j]
-    T_total = np.sum(0.5*1.225*Uinf*Uinf*NBlades*chords*dr*Fnorm)
-    Q_total = np.sum(0.5*1.225*Uinf*Uinf*NBlades*chords*final_results[:,2,j]*Radius*Ftan*dr)
-    Q.append(Q_total)
-    T.append(T_total)
-    CP.append(np.sum(dr*final_results[:,4, j]*final_results[:,2, j]*NBlades*Radius*Omega/(0.5*Uinf**3*np.pi*Radius**2)))
-    CT.append(np.sum(dr*results[:,3]*NBlades/(0.5*Uinf**2*np.pi*Radius**2)))
+
+# dr = np.linspace(0.005, 0.05, 10)
+# print(dr)
+# for j in range(len(dr)):
+#     delta_r_R = dr[j]
+#     r_R = np.arange(0.2, 1+delta_r_R/2, delta_r_R)
+#     if r_R[-1] != 1:
+#         r_R[-1] = 1
+#     if r_R[0] != 0.2:
+#         r_R[0] = 0.2
+#     cosine_spacing = np.cos(np.linspace(np.arccos(RootLocation_R), 0, len(r_R)))
+#     chord_distribution = 3*(1-r_R)+1 # meters
+#     chords = np.delete(chord_distribution, -1)
+#     twist_distribution = -14*(1-r_R)+pitch # degrees
+#     spacing = [r_R, cosine_spacing]
+#     mysin = [False, True]
+#     for i in range(len(spacing)):
+#         BEM(spacing[i], mysin[i])
+
+# print(len(CT_convergence))
+# print(len(CT_convergence_cos))
+# print(CT_convergence_cos)
+# plt.plot(NumberOfPoints, CT_convergence, label='linear spacing')
+# plt.plot(NumberOfPoints, CT_convergence_cos, label='sinusoidal spacing')
+# plt.show()
 
 
 def pressure(final_results, TSR):
@@ -154,16 +187,10 @@ def pressure(final_results, TSR):
         CT_perAnulli = final_results[:,3,i]*NBlades/(0.5*1.225*(Uinf**2)*2*np.pi*rR*Radius)
 
         a = 0.5*(1-np.sqrt(1-CT_perAnulli))
-        # aline = final_results[:,1,i]
-        
         Urotor = Uinf*(1-a) # axial velocity at rotor
-
         VR = np.sqrt(Urotor**2)
-
-        
         U4rotor = Uinf*(1-2*a)
         V4 = np.sqrt(U4rotor**2)
-
 
         x = rR
         y1 = (p_static + 0.5*1.225*Uinf**2)*1e-5
@@ -199,17 +226,10 @@ def pressure(final_results, TSR):
         axs[1, 1].set_xlabel(r'$r/R$', fontsize=12)
         axs[1, 1].set_ylabel(r'$P_{stag}$ [bar]', fontsize=12)
 
-
-        # Adding spacing between subplots
         plt.tight_layout()
-
-        # Displaying the plot
     plt.show()
-    #     plt.plot(rR, p_stag)
-    # # plt.show()
-    # # plt.cla()
-      
-
+    # plt.show()
+    # plt.cla()    
 def plot_alpha_rR(final_results, TSR, save=False):
     for i in range(len(TSR)):
         plt.plot(final_results[:,2,i], final_results[:,7,i], label = 'TSR = '+str(TSR[i]))
@@ -222,7 +242,6 @@ def plot_alpha_rR(final_results, TSR, save=False):
         plt.cla()
     else:
         plt.show()
-
 def plot_phi_rR(final_results, TSR, save=False):
     for i in range(len(TSR)):
         plt.plot(final_results[:,2,i], final_results[:,6,i], label = 'TSR = '+str(TSR[i]))
@@ -235,7 +254,6 @@ def plot_phi_rR(final_results, TSR, save=False):
         plt.cla()
     else:
         plt.show()
-
 def plot_a_rR(final_results, TSR, save=False):
     for i in range(len(TSR)):
         plt.plot(final_results[:,2,i], final_results[:,0,i], label = 'TSR = '+str(TSR[i]))
@@ -366,16 +384,63 @@ def plot_D_chord(final_results, TSR, save=False):
     else:
         plt.show()
 
-save = True
+def plt_TQ(T,Q,save=False):
+    T=np.array(T)
+    Q = np.array(Q)
+    plt.plot(TSR, T/1000, label=r'$T$')
+    plt.plot(TSR, Q/1000, label=r'$Q$')
+    plt.xlabel('TSR')
+    plt.ylabel(r'$T[kN],Q [kNm]$')
+    plt.legend()
+    plt.grid()
+    if save:
+        plt.savefig('totalTandQ_TSR.png', bbox_inches='tight')
+        plt.cla()
+    else:
+        plt.show()
+        plt.cla()
 
-plot_alpha_rR(final_results, TSR, save)
-plot_phi_rR(final_results, TSR, save)
-plot_a_rR(final_results, TSR, save)
-plot_aprime_rR(final_results, TSR, save)
-plot_fnorm_rR(final_results, TSR, save)
-plot_ftan_rR(final_results, TSR, save)
-plot_tiprootloss(final_results, TSR, save)
-plot_cl_chord(final_results, TSR, save)
-plot_cd_chord(final_results, TSR, save)
-plot_L_chord(final_results, TSR, save)
-plot_D_chord(final_results, TSR, save)
+def plt_CP(CT, CP, save=False):
+    TSR_max = np.argmax(CP)
+    CP_max = CP[TSR_max]
+    plt.plot(TSR[TSR_max], CP_max, 'ro')
+    plt.plot(TSR, CP, label=r'$C_P$')
+    plt.plot(TSR, CT, label=r'$C_T$')
+    plt.xlabel(r'$TSR$')
+    plt.ylabel(r'$C_P, C_T$')
+    # Add textbox next to the plotted point
+    plt.text(TSR[TSR_max], CP_max, r'$C_{P_{max}} = $' + f'{CP_max:.3f})', ha='right', va='bottom')
+    plt.legend()
+    plt.grid()
+    if save:
+        plt.savefig('CP_CT.png')
+        plt.cla()
+    else:
+        plt.show()
+
+save = True
+pressure(final_results, TSR)
+# plt_TQ(T,Q,save)
+# plt_CP(CT, CP, save=False)
+
+# areas = (r_R[1:]**2-r_R[:-1]**2)*np.pi*Radius**2
+# dr = (r_R[1:]-r_R[:-1])*Radius
+# print(dr)
+
+# areas = (r_R[1:]**2-r_R[:-1]**2)*np.pi*Radius**2
+# dr = (r_R[1:]-r_R[:-1])*Radius
+# CT = np.sum(dr*results[:,3]*NBlades/(0.5*Uinf**2*np.pi*Radius**2))
+# CP = np.sum(dr*results[:,4]*results[:,2]*NBlades*Radius*Omega/(0.5*Uinf**3*np.pi*Radius**2))
+
+
+# plot_alpha_rR(final_results, TSR, save)
+# plot_phi_rR(final_results, TSR, save)
+# plot_a_rR(final_results, TSR, save)
+# plot_aprime_rR(final_results, TSR, save)
+# plot_fnorm_rR(final_results, TSR, save)
+# plot_ftan_rR(final_results, TSR, save)
+# plot_tiprootloss(final_results, TSR, save)
+# plot_cl_chord(final_results, TSR, save)
+# plot_cd_chord(final_results, TSR, save)
+# plot_L_chord(final_results, TSR, save)
+# plot_D_chord(final_results, TSR, save)
